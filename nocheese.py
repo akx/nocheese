@@ -1,19 +1,25 @@
 import ast
+import codecs
 import os
 import random
 import re
 import requests
 import subprocess
 import tarfile
+import time
 import zipfile
+
+def flatten(s):
+	return "".join([c for c in s.encode("ascii", "ignore") if c.isalnum()])
 
 link_re = re.compile(r'href="(.+?)"')
 pkg_name_re = re.compile("^[^<> =]+")
-
+simple_index_pkg_name_re = re.compile(r"'>(.+?)</a")
+package_aliases = {}
 root_path = os.path.realpath("./root")
 
 def get_pypi_host():
-	return "http://pypi.python.org"
+	return "http://b.pypi.python.org"
 
 def make_dir_for(filename):
 	filename = os.path.abspath(filename)
@@ -53,7 +59,10 @@ def read_requirements(filename):
 def process_package(package):
 	print "Processing package %s" % package
 	pypi_host = get_pypi_host()
-	resp = requests.get("%s/simple/%s" % (pypi_host, package))
+	resp = requests.get("%s/simple/%s/" % (pypi_host, package))
+	if resp.status_code == 404:
+		print " --- Package index unavailable: %s" % package
+		return set()
 	resp.raise_for_status()
 	data = resp.content
 
@@ -118,15 +127,44 @@ class Mirrorator(object):
 	def go(self):
 		while self.queue:
 			package = self.queue.pop(0)
-			if package.lower() in self.seen:
+			flatpack = flatten(package)
+			if flatpack in self.seen:
 				continue
-			self.seen.add(package.lower())
+			self.seen.add(flatpack)
+			
+			package = package_aliases.get(flatpack, package)
 			requirements = process_package(package)
 			if requirements:
 				print "Adding new requirements: %s" % sorted(requirements)
 				self.queue.extend(requirements)
 
-if __name__ == '__main__':
+def download_package_aliases():
+	pypi_host = get_pypi_host()
+	data = requests.get("%s/simple/" % pypi_host).text
+	packages = sorted(m.group(1) for m in simple_index_pkg_name_re.finditer(data))
+	with codecs.open("package-index.txt", "wb", "UTF-8") as outf:
+		for package in packages:
+			outf.write(package.strip() + "\n")#print >>outf, package
+
+def read_package_aliases():
+	aliases = {}
+	with codecs.open("package-index.txt", "rb", "UTF-8") as inf:
+		for line in inf:
+			line = line.strip()
+			aliases[flatten(line)] = line
+	return aliases
+
+def check_aliases():
+	if not os.path.isfile("package-index.txt") or time.time() - os.stat("package-index.txt").st_mtime > 86400 * 3.5:
+		print "Downloading package index..."
+		download_package_aliases()
+
+	package_aliases.update(read_package_aliases())
+	print "Read %d packages from index" % len(package_aliases)	
+
+def main():
+	check_aliases()
+
 	packages = set()
 	with file("packages.txt", "rb") as packages_file:
 		for line in packages_file:
@@ -134,3 +172,6 @@ if __name__ == '__main__':
 
 	m = Mirrorator(sorted(packages))
 	m.go()
+
+if __name__ == '__main__':
+	main()
