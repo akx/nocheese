@@ -30,7 +30,7 @@ def make_dir_for(filename):
 
 def read_requirements(filename):
 	setup_py = None
-	if ".tar." in filename:
+	if ".tar." in filename or filename.endswith(".tgz"):
 		with tarfile.open(filename, "r:*") as tar:
 			for member in tar.getmembers():
 				if member.name.lower().endswith("setup.py"):
