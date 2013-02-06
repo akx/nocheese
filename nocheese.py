@@ -139,6 +139,13 @@ class Mirrorator(object):
 			for package, url in self.all_urls:
 				out_f.write("%s: <a href=\"%s\">%s</a><br>" % (package, url, os.path.basename(url)))
 
+	def write_simple_index(self):
+		s_index_path = os.path.join(root_path, "simple", "index.html")
+		make_dir_for(s_index_path)
+		with file(s_index_path, "wb") as out_f:
+			packages = set(package] for (package, url) in self.all_urls)
+			for package, url in packages:
+				out_f.write("<a href=\"/%s/\">%s</a><br>" % (package, package))
 
 
 	def go(self):
@@ -156,6 +163,7 @@ class Mirrorator(object):
 				self.queue.extend(requirements)
 
 		self.write_all_index()
+		self.write_simple_index()
 
 
 
