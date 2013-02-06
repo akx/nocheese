@@ -29,7 +29,6 @@ def make_dir_for(filename):
 		return True
 
 def read_requirements(filename):
-	print filename
 	setup_py = None
 	if ".tar." in filename:
 		with tarfile.open(filename, "r:*") as tar:
@@ -39,7 +38,9 @@ def read_requirements(filename):
 					break
 	elif filename.endswith(".egg") or filename.endswith(".zip"):
 		with zipfile.ZipFile(filename, "r") as zip:
-			setup_py = zip.read("setup.py")
+			for member in zip.namelist():
+				if member.lower().endswith("setup.py"):
+					setup_py = zip.read(member)
 	else:
 		raise NotImplementedError("Not implemented: %s" % filename)
 
@@ -97,22 +98,22 @@ def process_package(package):
 			print "  <- from -- ", url
 			print "  --  to --> ", dest_path
 			make_dir_for(dest_path)
-			subprocess.check_call(
-				[
-					"curl",
-					"-f",
-					"-o",
-					dest_path,
-					url
-				]
-			)
-
+			try:
+				subprocess.check_call(
+					[
+						"curl",
+						"-f",
+						"-o",
+						dest_path,
+						url
+					]
+				)
 		try:
 			all_requirements |= read_requirements(dest_path)
 		except KeyboardInterrupt:
 			raise
-		except:
-			print "Oops:", dest_path
+		#except:
+		#	print "Oops:", dest_path
 
 	with file(pkg_index_path, "wb") as out_f:
 		for url in write_in_index:
