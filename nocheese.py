@@ -37,7 +37,7 @@ def read_requirements(filename):
 				if member.name.lower().endswith("setup.py"):
 					setup_py = tar.extractfile(member).read()
 					break
-	elif filename.endswith(".egg"):
+	elif filename.endswith(".egg") or filename.endswith(".zip"):
 		with zipfile.ZipFile(filename, "r") as zip:
 			setup_py = zip.read("setup.py")
 	else:
@@ -109,6 +109,8 @@ def process_package(package):
 
 		try:
 			all_requirements |= read_requirements(dest_path)
+		except KeyboardInterrupt:
+			raise
 		except:
 			print "Oops:", dest_path
 
