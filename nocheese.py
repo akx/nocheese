@@ -10,7 +10,7 @@ import time
 import zipfile
 
 def flatten(s):
-	return "".join([c for c in s.encode("ascii", "ignore") if c.isalnum()])
+	return "".join([c for c in s.lower().encode("ascii", "ignore") if c.isalnum()])
 
 link_re = re.compile(r'href="(.+?)"')
 pkg_name_re = re.compile("^[^<> =]+")
