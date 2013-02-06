@@ -143,7 +143,7 @@ class Mirrorator(object):
 		s_index_path = os.path.join(root_path, "simple", "index.html")
 		make_dir_for(s_index_path)
 		with file(s_index_path, "wb") as out_f:
-			packages = set(package] for (package, url) in self.all_urls)
+			packages = set(package for (package, url) in self.all_urls)
 			for package, url in packages:
 				out_f.write("<a href=\"/%s/\">%s</a><br>" % (package, package))
 
