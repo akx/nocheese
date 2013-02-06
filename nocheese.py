@@ -128,8 +128,7 @@ class Mirrorator(object):
 		with file(pkg_index_path, "wb") as out_f:
 			for url in write_in_index:
 				out_f.write("<a href=\"%s\">%s</a>\n" % (url, os.path.basename(url)))
-
-			self.all_urls.append((package, url))
+				self.all_urls.append((package, url))
 
 		all_requirements = set(pkg_name_re.search(req).group(0) for req in all_requirements)
 		return all_requirements
