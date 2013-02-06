@@ -57,48 +57,58 @@ def read_requirements(filename):
 	
 	return requirements
 
-def process_package(package):
-	print "Processing package %s" % package
-	pypi_host = get_pypi_host()
-	resp = requests.get("%s/simple/%s/" % (pypi_host, package))
-	if resp.status_code == 404:
-		print " --- Package index unavailable: %s" % package
-		return set()
-	resp.raise_for_status()
-	data = resp.content
 
-	loc_pkg_prefix = "../../packages/"
-	pkg_orig_index_path = os.path.join(root_path, "simple", package, "index-orig.html")
-	pkg_index_path = os.path.join(root_path, "simple", package, "index.html")
-	make_dir_for(pkg_index_path)
-	with file(pkg_orig_index_path, "wb") as out_f:
-		out_f.write(data.encode("UTF-8"))
 
-	write_in_index = []
+class Mirrorator(object):
+	def __init__(self, packages):
+		self.queue = list(packages)
+		self.seen = set()
+		self.all_urls = []
 
-	for link in link_re.finditer(data):
-		url = link.group(1)
-		if url.startswith(loc_pkg_prefix):
-			if "/source/" not in url:
-				continue
-			if "-alpha-" in url:
-				continue
-			write_in_index.append(url)
+	def process_package(self, package):
+		print "Processing package %s" % package
+		pypi_host = get_pypi_host()
+		resp = requests.get("%s/simple/%s/" % (pypi_host, package))
+		if resp.status_code == 404:
+			print " --- Package index unavailable: %s" % package
+			return
 
-	write_in_index.sort()
+		resp.raise_for_status()
+		data = resp.content
 
-	all_requirements = set()
+		loc_pkg_prefix = "../../packages/"
+		loc_pkg_prefix_rewrite = "packages/"
 
-	for url in write_in_index:
-		in_pkg_url = url.replace(loc_pkg_prefix, "")
-		dest_path = os.path.join(root_path, "packages", in_pkg_url).split("#")[0]
-		if not os.path.exists(dest_path):
-			print "Downloading:"
-			url = "%s/packages/%s" % (pypi_host, in_pkg_url)
-			print "  <- from -- ", url
-			print "  --  to --> ", dest_path
-			make_dir_for(dest_path)
-			try:
+		pkg_orig_index_path = os.path.join(root_path, "simple", package, "index-orig.html")
+		pkg_index_path = os.path.join(root_path, "simple", package, "index.html")
+		make_dir_for(pkg_index_path)
+		with file(pkg_orig_index_path, "wb") as out_f:
+			out_f.write(data.encode("UTF-8"))
+
+		write_in_index = []
+
+		for link in link_re.finditer(data):
+			url = link.group(1)
+			if url.startswith(loc_pkg_prefix):
+				if "/source/" not in url:
+					continue
+				if "-alpha-" in url:
+					continue
+				url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite)
+				write_in_index.append(url)
+
+		write_in_index.sort()
+
+		all_requirements = set()
+
+		for url in write_in_index:
+			dest_path = os.path.join(root_path, url).split("#")[0]
+			if not os.path.exists(dest_path):
+				print "Downloading:"
+				url = "%s/%s" % (pypi_host, url)
+				print "  <- from -- ", url
+				print "  --  to --> ", dest_path
+				make_dir_for(dest_path)
 				subprocess.check_call(
 					[
 						"curl",
@@ -108,24 +118,29 @@ def process_package(package):
 						url
 					]
 				)
-		try:
-			all_requirements |= read_requirements(dest_path)
-		except KeyboardInterrupt:
-			raise
-		#except:
-		#	print "Oops:", dest_path
+			try:
+				all_requirements |= read_requirements(dest_path)
+			except KeyboardInterrupt:
+				raise
+			except:
+				print "Failed reading requirements from %r" % dest_path
 
-	with file(pkg_index_path, "wb") as out_f:
-		for url in write_in_index:
-			out_f.write("<a href=\"%s\">%s</a>\n" % (url, os.path.basename(url)))
+		with file(pkg_index_path, "wb") as out_f:
+			for url in write_in_index:
+				out_f.write("<a href=\"%s\">%s</a>\n" % (url, os.path.basename(url)))
 
-	return set(pkg_name_re.search(req).group(0) for req in all_requirements)
+			self.all_urls.append((package, url))
+
+		all_requirements = set(pkg_name_re.search(req).group(0) for req in all_requirements)
+		return all_requirements
+
+	def write_all_index(self):
+		all_index_path = os.path.join(root_path, "index.html")
+		with file(all_index_path, "wb") as out_f:
+			for package, url in self.all_urls:
+				out_f.write("%s: <a href=\"%s\">%s</a><br>" % (package, url, os.path.basename(url)))
 
 
-class Mirrorator(object):
-	def __init__(self, packages):
-		self.queue = list(packages)
-		self.seen = set()
 
 	def go(self):
 		while self.queue:
@@ -136,10 +151,14 @@ class Mirrorator(object):
 			self.seen.add(flatpack)
 			
 			package = package_aliases.get(flatpack, package)
-			requirements = process_package(package)
+			requirements = self.process_package(package)
 			if requirements:
 				print "Adding new requirements: %s" % sorted(requirements)
 				self.queue.extend(requirements)
+
+		self.write_all_index()
+
+
 
 def download_package_aliases():
 	pypi_host = get_pypi_host()
