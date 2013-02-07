@@ -180,7 +180,9 @@ def read_package_aliases():
 	with codecs.open("package-index.txt", "rb", "UTF-8") as inf:
 		for line in inf:
 			line = line.strip()
-			aliases[flatten(line)] = line
+			flat = flatten(line)
+			if flat:
+				aliases[flat] = line
 	return aliases
 
 def check_aliases():
@@ -197,7 +199,9 @@ def main():
 	packages = set()
 	with file("packages.txt", "rb") as packages_file:
 		for line in packages_file:
-			packages.add(line.strip())
+			line = line.strip()
+			if line and not line.startswith("#"):
+				packages.add(line)
 
 	m = Mirrorator(sorted(packages))
 	m.go()
