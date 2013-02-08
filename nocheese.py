@@ -28,32 +28,50 @@ def make_dir_for(filename):
 		os.makedirs(dirname)
 		return True
 
+def read_package_name(package_name):
+	return pkg_name_re.match(package_name).group(0)
+
+def read_setup_py(setup_py):
+	requirements = set()
+	tree = ast.parse(setup_py)
+	for node in ast.walk(tree):
+		arg = getattr(node, "arg", None)
+		if arg in ("requires", "install_requires"):
+			for node in ast.walk(node.value):
+				if isinstance(node, ast.Str):
+					requirements.add(read_package_name(node.s))
+	return requirements
+
+def read_requirements_txt(requirements_txt):
+	requirements = set()
+	for line in requirements_txt.splitlines():
+		line = line.strip()
+		if line and not line.startswith("#"):
+			requirements.add(read_package_name(line.strip()))
+	return requirements
+
+
+
 def read_requirements(filename):
+	requirements = set()
 	setup_py = None
 	if ".tar." in filename or filename.endswith(".tgz"):
 		with tarfile.open(filename, "r:*") as tar:
 			for member in tar.getmembers():
 				if member.name.lower().endswith("setup.py"):
-					setup_py = tar.extractfile(member).read()
-					break
+					requirements |= read_setup_py(tar.extractfile(member).read())
+				elif member.name.lower().endswith("requirements.txt"):
+					requirements |= read_requirements_txt(tar.extractfile(member).read())
 	elif filename.endswith(".egg") or filename.endswith(".zip"):
 		with zipfile.ZipFile(filename, "r") as zip:
 			for member in zip.namelist():
 				if member.lower().endswith("setup.py"):
-					setup_py = zip.read(member)
+					requirements |= read_setup_py(zip.read(member))
+				if member.lower().endswith("requirements.txt"):
+					requirements |= read_requirements_txt(zip.read(member))
 	else:
 		raise NotImplementedError("Not implemented: %s" % filename)
 
-	requirements = set()
-
-	if setup_py:
-		tree = ast.parse(setup_py)
-		for node in ast.walk(tree):
-			arg = getattr(node, "arg", None)
-			if arg in ("requires", "install_requires"):
-				for node in ast.walk(node.value):
-					if isinstance(node, ast.Str):
-						requirements.add(node.s)
 	
 	return requirements
 
@@ -159,7 +177,7 @@ class Mirrorator(object):
 			package = package_aliases.get(flatpack, package)
 			requirements = self.process_package(package)
 			if requirements:
-				print "Adding new requirements: %s" % sorted(requirements)
+				print "Adding new requirements from %s: %s" % (package, sorted(requirements))
 				self.queue.extend(requirements)
 
 		self.write_all_index()
