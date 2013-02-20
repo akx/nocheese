@@ -143,7 +143,7 @@ class Mirrorator(object):
 					continue
 				if "-alpha-" in url:
 					continue
-				#url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite)
+				url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite).split("#")[0]
 				write_in_index.append(url)
 
 		write_in_index.sort()
@@ -151,7 +151,7 @@ class Mirrorator(object):
 		all_requirements = set()
 
 		for url in write_in_index:
-			url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite).split("#")[0]
+			
 			dest_path = os.path.join(root_path, url)
 			if not os.path.exists(dest_path):
 				print "Downloading:"
