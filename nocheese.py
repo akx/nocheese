@@ -113,6 +113,7 @@ class Mirrorator(object):
 		self.queue = list(packages)
 		self.seen = set()
 		self.all_urls = []
+		self.requirement_tree = {}
 
 	def process_package(self, package):
 		print "Processing package %s" % package
@@ -215,11 +216,16 @@ class Mirrorator(object):
 			requirements = self.process_package(package)
 			if requirements:
 				requirements = set([package_aliases.get(r, r) for r in [flatten(r) for r in requirements]])
+				self.requirement_tree[package] = requirements
 				print "Adding new requirements from %s: %s" % (package, sorted(requirements))
 				self.queue.extend(requirements)
 
 		self.write_all_index()
 		self.write_simple_index()
+
+		with file("requirement-tree.txt", "wb") as outf:
+			for package, requirements in sorted(self.requirement_tree.iteritems()):
+				outf.write("%s <- %s\n" % (package, ", ".join(requirements)))
 
 
 
