@@ -50,28 +50,59 @@ def read_requirements_txt(requirements_txt):
 			requirements.add(read_package_name(line.strip()))
 	return requirements
 
+class ICompressed(object):
+	def __init__(self, filename):
+		self.obj = None
+		raise NotImplementedError("Not implemented")
+	def __iter__(self):
+		raise NotImplementedError("Not implemented")
+	def read(self, member):
+		raise NotImplementedError("Not implemented")
+	def __enter__(self):
+		return self
+	def __exit__(self, *args):
+		self.obj.close()
+
+class Tar(ICompressed):
+	def __init__(self, filename):
+		self.obj = tarfile.open(filename, "r:*")
+	
+	def __iter__(self):
+		for member in self.obj:
+			yield member
+
+	def read(self, member):
+		return self.obj.extractfile(member).read()
+
+class Zip(ICompressed):
+	def __init__(self, filename):
+		self.obj = zipfile.ZipFile(filename, "r")
+
+	def __iter__(self):
+		for member in self.obj.infolist():
+			yield member
+
+	def read(self, member):
+		return self.obj.read(member)
+
 
 
 def read_requirements(filename):
 	requirements = set()
 	setup_py = None
 	if ".tar." in filename or filename.endswith(".tgz"):
-		with tarfile.open(filename, "r:*") as tar:
-			for member in tar.getmembers():
-				if member.name.lower().endswith("setup.py"):
-					requirements |= read_setup_py(tar.extractfile(member).read())
-				elif member.name.lower().endswith("requirements.txt"):
-					requirements |= read_requirements_txt(tar.extractfile(member).read())
+		comp = Tar(filename)
 	elif filename.endswith(".egg") or filename.endswith(".zip"):
-		with zipfile.ZipFile(filename, "r") as zip:
-			for member in zip.namelist():
-				if member.lower().endswith("setup.py"):
-					requirements |= read_setup_py(zip.read(member))
-				if member.lower().endswith("requirements.txt"):
-					requirements |= read_requirements_txt(zip.read(member))
+		comp = Zip(filename)
 	else:
 		raise NotImplementedError("Not implemented: %s" % filename)
 
+	for member in comp:
+		name = getattr(member, "name", getattr(member, "filename", "")).lower()
+		if name.endswith("setup.py"):
+			requirements |= read_setup_py(comp.read(member))
+		elif name.endswith("requirements.txt"):
+			requirements |= read_requirements_txt(comp.read(member))
 	
 	return requirements
 
@@ -112,7 +143,7 @@ class Mirrorator(object):
 					continue
 				if "-alpha-" in url:
 					continue
-				url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite)
+				#url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite)
 				write_in_index.append(url)
 
 		write_in_index.sort()
@@ -120,7 +151,8 @@ class Mirrorator(object):
 		all_requirements = set()
 
 		for url in write_in_index:
-			dest_path = os.path.join(root_path, url).split("#")[0]
+			url = url.replace(loc_pkg_prefix, loc_pkg_prefix_rewrite).split("#")[0]
+			dest_path = os.path.join(root_path, url)
 			if not os.path.exists(dest_path):
 				print "Downloading:"
 				url = "%s/%s" % (pypi_host, url)
@@ -136,16 +168,21 @@ class Mirrorator(object):
 						url
 					]
 				)
+			else:
+				print "Skipping download of %s" % url
 			try:
 				all_requirements |= read_requirements(dest_path)
 			except KeyboardInterrupt:
 				raise
-			except:
+			except Exception, exc:
 				print "Failed reading requirements from %r" % dest_path
+				print "  (%s)" % exc
+
+		# Write /simple/<package>/index.html
 
 		with file(pkg_index_path, "wb") as out_f:
 			for url in write_in_index:
-				out_f.write("<a href=\"%s\">%s</a>\n" % (url, os.path.basename(url)))
+				out_f.write("<a href=\"/%s\">%s</a>\n" % (url, os.path.basename(url)))
 				self.all_urls.append((package, url))
 
 		all_requirements = set(pkg_name_re.search(req).group(0) for req in all_requirements)
@@ -177,6 +214,7 @@ class Mirrorator(object):
 			package = package_aliases.get(flatpack, package)
 			requirements = self.process_package(package)
 			if requirements:
+				requirements = set([package_aliases.get(r, r) for r in [flatten(r) for r in requirements]])
 				print "Adding new requirements from %s: %s" % (package, sorted(requirements))
 				self.queue.extend(requirements)
 
